@@ -1,0 +1,9 @@
+---
+# required
+bearerToken: "" # the api token must have read and edit rights to the dns
+domain: "" # the domain of the site which dns records you want to update e.g. example.com
+recordNameToSet: "" # the dns record to update, e.g. ip.example.com
+
+# these extra values can be set if you already knwo them to limit number of requests
+zoneId: "" # zone id for example.com
+dnsId: "" # dns id for ip.example.com
