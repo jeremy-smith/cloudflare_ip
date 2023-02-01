@@ -19,7 +19,7 @@ It can be used for setting any record type, not just A records, but since it
 can only set the value to the IP (and only accepts IPv4) it's not very useful
 for much else.
 
-You will need a Cloudflare access token to. Go into your profile
+You will need a Cloudflare access token. Go into your profile
 on Cloudflare and create an access token with edit rights for Zone.DNS.
 
 Copy `config_template.yml` into `config.yml` and fill in the fields.
