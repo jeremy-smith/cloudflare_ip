@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"flag"
 	"io"
 	"log"
 	"net/http"
@@ -14,7 +15,7 @@ import (
 )
 
 const (
-	configFile = "config.yml"
+	defaultConfigFile = "config.yml"
 )
 
 func getExternalIP(jsonIPService, jsonQuery string) (string, error) {
@@ -44,8 +45,15 @@ func getExternalIP(jsonIPService, jsonQuery string) (string, error) {
 }
 
 func main() {
+	configFile := flag.String("c", "config.yml", "config file")
+	flag.Parse()
+
+	if *configFile == "" {
+		*configFile = defaultConfigFile
+	}
+
 	// read Cloudflare config from yaml file
-	bs, err := config.ReadConfig(configFile)
+	bs, err := config.ReadConfig(*configFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
