@@ -42,7 +42,7 @@ type jsonResultMultiple struct {
 
 func PrettyPrintJSON(b []byte) {
 	bB := bytes.Buffer{}
-	json.Indent(&bB, b, "", "  ")
+	_ = json.Indent(&bB, b, "", "  ")
 	fmt.Println(bB.String())
 }
 
@@ -73,29 +73,29 @@ func (cf Cloudflare) ListZones(domain string) (string, error) {
 	return _cfGet(&cf, domain, "", "", "")
 }
 
-func (cf Cloudflare) ListDNSRecords(
-	zoneID string, recordNameToSet string, dnsRecordType string) (string, error) {
-	return _cfGet(&cf, "", zoneID, recordNameToSet, dnsRecordType)
+func (cf Cloudflare) ListDNSRecords(zoneID, recordName, recordType string) (string, error) {
+	return _cfGet(&cf, "", zoneID, recordName, recordType)
 }
 
-func _cfGet(
-	cf *Cloudflare, domain string, zoneID, recordNameToSet string,
-	dnsRecordType string) (string, error) {
+func _cfGet(cf *Cloudflare, domain, zoneID, recordName, recordType string) (string, error) {
 	var apiPath string
+
 	queryParams := make(map[string]string)
+
 	if domain != "" { // List Zones
 		apiPath = ApiListZones
 		queryParams["name"] = domain
 	} else { // List DNS Records
 		apiPath = fmt.Sprintf(ApiListDNSRecords, zoneID)
-		queryParams["name"] = recordNameToSet
-		queryParams["type"] = dnsRecordType
+		queryParams["name"] = recordName
+		queryParams["type"] = recordType
 	}
 
 	req, err := http.NewRequest(http.MethodGet, apiPath, nil)
 	if err != nil {
 		return "", err
 	}
+
 	req.Header.Add("authorization", "Bearer "+cf.bearerToken)
 	q := req.URL.Query()
 	for k, v := range queryParams {
@@ -114,7 +114,7 @@ func _cfGet(
 	}
 
 	var jr jsonResultMultiple
-	json.Unmarshal(b, &jr)
+	_ = json.Unmarshal(b, &jr)
 
 	if !jr.Success {
 		errStr := compileErrStr(jr.Errors)
@@ -129,20 +129,18 @@ func _cfGet(
 	return jr.Result[0].Id, nil
 }
 
-func (cf Cloudflare) CreateDNSRecord(zoneID string, domain string, ip string) (string, error) {
-	return _cfUpdateCreate(&cf, zoneID, "", domain, ip)
+func (cf Cloudflare) CreateDNSRecord(zoneID, domain, recordType, ip string) (string, error) {
+	return _cfUpdateCreate(&cf, zoneID, "", domain, recordType, ip)
 }
 
-func (cf Cloudflare) UpdateDNSRecord(
-	zoneID string, dnsID string, domain string, ip string) (string, error) {
-	return _cfUpdateCreate(&cf, zoneID, dnsID, domain, ip)
+func (cf Cloudflare) UpdateDNSRecord(zoneID, dnsID, domain, recordType, ip string) (string, error) {
+	return _cfUpdateCreate(&cf, zoneID, dnsID, domain, recordType, ip)
 }
 
-func _cfUpdateCreate(
-	cf *Cloudflare, zoneID string, dnsID string, domain string, ip string) (string, error) {
-
+func _cfUpdateCreate(cf *Cloudflare, zoneID, dnsID, domain, recordType, ip string) (string, error) {
 	var method string
 	var apiPath string
+
 	if dnsID == "" {
 		method = http.MethodPost
 		apiPath = fmt.Sprintf(ApiCreateDNSRecord, zoneID)
@@ -152,7 +150,7 @@ func _cfUpdateCreate(
 	}
 
 	postData := []byte(fmt.Sprintf(
-		`{"type":"A", "name":"%s", "content":"%s", "ttl": "1"}`, domain, ip))
+		`{"type":"%s", "name":"%s", "content":"%s"}`, recordType, domain, ip))
 
 	body := bytes.NewBuffer(postData)
 
@@ -174,7 +172,7 @@ func _cfUpdateCreate(
 	}
 
 	var jr jsonResultSingle
-	json.Unmarshal(b, &jr)
+	_ = json.Unmarshal(b, &jr)
 
 	if !jr.Success {
 		errStr := compileErrStr(jr.Errors)

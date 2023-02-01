@@ -1,28 +1,24 @@
 package main
 
 import (
-	"cloudflare/cloudflare"
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
 	"net/http"
-	"os"
+	"regexp"
+
+	"github.com/tidwall/gjson"
+
+	"cloudflare/cloudflare"
+	"cloudflare/config"
 )
 
 const (
-	configFile  = "config.yml"
-	IPService   = "http://ip-api.com/json/"
-	logFileName = "cloudflare.log"
+	configFile = "config.yml"
 )
 
-type IPResponse struct {
-	Status string `json:"status"`
-	IP     string `json:"query"`
-}
-
-func getExternalIP() (string, error) {
-	req, err := http.NewRequest(http.MethodGet, IPService, nil)
+func getExternalIP(jsonIPService, jsonQuery string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, jsonIPService, nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -37,44 +33,35 @@ func getExternalIP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	var d IPResponse
-	if err := json.Unmarshal(b, &d); err != nil {
-		return "", err
+
+	jsonRes := gjson.Get(string(b), jsonQuery)
+
+	if ok, _ := regexp.MatchString(`^((25[0-5]|(2[0-4]|1\d|[1-9]|)\d)\.?\b){4}$`, jsonRes.String()); !ok {
+		return "", errors.New("could not get the ip from the IP service")
 	}
-	if d.Status != "success" {
-		return "", errors.New("error: status of request to IP service was not successful")
-	}
-	return d.IP, nil
+
+	return jsonRes.String(), nil
 }
 
 func main() {
-
-	// open log file and direct the output of log to it
-	logFile, err := os.OpenFile(logFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0644)
+	// read Cloudflare config from yaml file
+	bs, err := config.ReadConfig(configFile)
 	if err != nil {
-		log.Fatalf("Error opening log file: %v", err)
+		log.Fatalln(err)
 	}
-	defer logFile.Close()
-	log.SetOutput(logFile)
+	conf, err := config.ParseConfig(bs)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
-	log.Printf("Calling %s", IPService)
-	ip, err := getExternalIP()
+	log.Printf("Calling %s", conf.JsonIPService)
+	ip, err := getExternalIP(conf.JsonIPService, conf.JsonQuery)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	log.Printf("Got ip: %s", ip)
 
-	// read Cloudflare config from file
-	bs, err := readConfig(configFile)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	conf, err := parseConfig(bs)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	cf := cloudflare.NewCloudflare(conf.BearerToken)
+	cf := cloudflare.NewCloudflare(conf.AccessToken)
 
 	zoneID := conf.ZoneID
 	if zoneID == "" {
@@ -87,26 +74,28 @@ func main() {
 
 	dnsID := conf.DnsID
 	if dnsID == "" {
-		log.Printf("Calling ListDNSRecords {zoneID: %s, recordNameToSet: %s, recordType: %s}",
-			zoneID, conf.RecordNameToset, "A")
-		dnsID, err = cf.ListDNSRecords(zoneID, conf.RecordNameToset, "A")
+		log.Printf("Calling ListDNSRecords {zoneID: %s, recordName: %s, recordType: %s}",
+			zoneID, conf.RecordName, conf.RecordType)
+		dnsID, err = cf.ListDNSRecords(zoneID, conf.RecordName, conf.RecordType)
 		if err != nil {
 			log.Fatalln(err)
 		}
 
 		if dnsID == "" {
-			log.Printf("Calling CreateDNSRecord {zoneID: %s, recordNameToSet: %s, ip: %s}",
-				zoneID, conf.RecordNameToset, ip)
-			_, err = cf.CreateDNSRecord(zoneID, conf.RecordNameToset, ip)
+			log.Printf("Calling CreateDNSRecord {zoneID: %s, recordName: %s, recordType: %s, ip: %s}",
+				zoneID, conf.RecordName, conf.RecordType, ip)
+			createdDnsId, err := cf.CreateDNSRecord(zoneID, conf.RecordName, conf.RecordType, ip)
 			if err != nil {
 				log.Fatalln(err)
 			}
+			log.Printf("Created %s record with dnsId: %s", conf.RecordType, createdDnsId)
 		}
 	}
+
 	if dnsID != "" {
-		log.Printf("Calling UpdateDNSRecord {zoneID: %s, dnsID: %s, recordNameToSet: %s, ip: %s}",
-			zoneID, dnsID, conf.RecordNameToset, ip)
-		_, err = cf.UpdateDNSRecord(zoneID, dnsID, conf.RecordNameToset, ip)
+		log.Printf("Calling UpdateDNSRecord {zoneID: %s, dnsID: %s, recordName: %s, recordType: %s, ip: %s}",
+			zoneID, dnsID, conf.RecordName, conf.RecordType, ip)
+		_, err = cf.UpdateDNSRecord(zoneID, dnsID, conf.RecordName, conf.RecordType, ip)
 		if err != nil {
 			log.Fatalln(err)
 		}
